@@ -1,0 +1,6 @@
+/* If you use Tailwind CSS, keep these lines */
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities; */
+@import "tailwindcss";
+/* You can remove all other default Next.js boilerplate styles */

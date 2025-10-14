@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Select,
   MenuItem,
@@ -25,18 +25,23 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableRow,
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
-// import Grid2 from "@mui/material/Unstable_Grid2";
 import Grid from "@mui/material/Grid";
-
-import { SolarPower, PriceCheck, RestartAlt, PictureAsPdf, WhatsApp } from "@mui/icons-material";
+import { SolarPower, PriceCheck, RestartAlt, PictureAsPdf, WhatsApp, Print } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useReactToPrint } from "react-to-print";
 
 import type { Product } from "../types/quote";
 import { products, companyDetails, GST_RATE, EXTRA_HEIGHT_RATE } from "../data/priceList";
 import { formatCurrency } from "../lib/utils";
+
+type DialogMode = "whatsapp" | "customerPrint";
 
 export default function SolarPricingPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(products[0] || null);
@@ -48,15 +53,33 @@ export default function SolarPricingPage() {
   const [discount, setDiscount] = useState<number>(0);
   const [location, setLocation] = useState<string>("Varanasi");
   const [salespersonName, setSalespersonName] = useState<string>("");
+  const [nowString, setNowString] = useState("");
+  const [todayString, setTodayString] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<DialogMode>("whatsapp");
   const [customerInfo, setCustomerInfo] = useState({ name: "", phone: "", address: "" });
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: "success" | "error" }>({ open: false, message: "", severity: "success" });
 
-  const printRef = useRef<HTMLDivElement>(null);
+  const salesPrintRef = useRef<HTMLDivElement>(null);
+  const customerPrintRef = useRef<HTMLDivElement>(null);
 
-  const { basePrice, marginPrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total } = useMemo(() => {
+  useEffect(() => {
+    setNowString(new Date().toLocaleString());
+    setTodayString(new Date().toLocaleDateString());
+  }, []);
+
+  const {
+    basePrice,
+    marginPrice,
+    wirePrice,
+    heightPrice,
+    outOfVnsPrice,
+    subtotal,
+    gstAmount,
+    total,
+  } = useMemo(() => {
     if (!selectedProduct)
       return { basePrice: 0, marginPrice: 0, wirePrice: 0, heightPrice: 0, outOfVnsPrice: 0, subtotal: 0, gstAmount: 0, total: 0 };
     const basePriceVal = selectedProduct.price;
@@ -88,38 +111,29 @@ export default function SolarPricingPage() {
   };
 
   // react-to-print v3 API: use contentRef
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: `Quotation_ArpitSolar_${new Date().toISOString().slice(0, 10)}`,
-  });
+  const handlePrintSales = useReactToPrint({ contentRef: salesPrintRef, documentTitle: `SalesCopy_ArpitSolar_${new Date().toISOString().slice(0, 10)}` });
+  const handlePrintCustomer = useReactToPrint({ contentRef: customerPrintRef, documentTitle: `CustomerCopy_ArpitSolar_${new Date().toISOString().slice(0, 10)}` });
 
-  const handleOpenDialog = () => setDialogOpen(true);
+  const handleOpenDialog = (mode: DialogMode) => { setDialogMode(mode); setDialogOpen(true); };
   const handleCloseDialog = () => setDialogOpen(false);
 
   const handleCustomerInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCustomerInfo({ ...customerInfo, [e.target.name]: e.target.value });
   };
 
-  const handleSendQuote = async () => {
-    if (!customerInfo.phone || !/^\d{10}$/.test(customerInfo.phone)) {
-      setNotification({ open: true, message: "Please enter a valid 10-digit phone number.", severity: "error" });
-      return;
-    }
-    setLoading(true);
-    handleCloseDialog();
-
-    // Include extra margin and height and wire in the subtotal sent to server
+  const buildQuotePayload = () => {
     const customerSubtotal = basePrice + marginPrice + wirePrice + heightPrice + outOfVnsPrice;
-    const customerGst = customerSubtotal * GST_RATE;
-    const customerTotal = customerSubtotal + customerGst;
-
-    const payload = {
+    const customerGst = +(customerSubtotal * GST_RATE).toFixed(2);
+    const customerTotal = +(customerSubtotal + customerGst).toFixed(2);
+    return {
       customerInfo,
       selectedProduct,
       salespersonName,
       location,
+      extraMargin,
       calculations: {
         basePrice,
+        marginPrice,
         wirePrice,
         heightPrice,
         outOfVnsPrice,
@@ -127,23 +141,68 @@ export default function SolarPricingPage() {
         gstAmount: customerGst,
         total: customerTotal,
         discount: safeDiscount,
+        grandTotal: Math.max(0, +(customerTotal - safeDiscount).toFixed(2)),
       },
     };
+  };
+
+  const saveQuoteRecord = async (payload: any) => {
+    try {
+      await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    } catch (e) {
+      console.error("Failed to save quote record", e);
+    }
+  };
+
+  const sendWhatsApp = async () => {
+    if (!customerInfo.phone || !/^\d{10}$/.test(customerInfo.phone)) {
+      setNotification({ open: true, message: "Please enter a valid 10-digit phone number.", severity: "error" });
+      return;
+    }
+    setLoading(true);
+    handleCloseDialog();
+
+    const payload = { ...buildQuotePayload(), channel: 'whatsapp', taxRate: 0.089, currency: 'INR' };
 
     try {
-      const response = await fetch("/api/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Failed to send quote");
+      // Save record to Supabase via our capture route
+      await saveQuoteRecord(payload);
       setNotification({ open: true, message: "Quotation sent successfully!", severity: "success" });
     } catch (error: any) {
       setNotification({ open: true, message: error.message, severity: "error" });
     } finally {
       setLoading(false);
     }
+  };
+
+  const printCustomerCopy = async () => {
+    // Validation optional for print; keep consistent with WhatsApp
+    if (!customerInfo.name || !customerInfo.phone || !/^\d{10}$/.test(customerInfo.phone)) {
+      setNotification({ open: true, message: "Please fill customer name and a valid 10-digit phone number.", severity: "error" });
+      return;
+    }
+    setLoading(true);
+    handleCloseDialog();
+    const payload = { ...buildQuotePayload(), channel: 'customer_print', taxRate: 0.089, currency: 'INR' };
+    try {
+      // Save the record first (for tracking)
+      await saveQuoteRecord(payload);
+      // Then trigger the print
+      await handlePrintCustomer?.();
+      setNotification({ open: true, message: "Customer copy ready to print.", severity: "success" });
+    } catch (e: any) {
+      setNotification({ open: true, message: e.message || "Failed to print customer copy.", severity: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDialogPrimary = async () => {
+    if (dialogMode === "whatsapp") return sendWhatsApp();
+    return printCustomerCopy();
   };
 
   if (!selectedProduct) return <Typography>No Products Available</Typography>;
@@ -245,12 +304,7 @@ export default function SolarPricingPage() {
 
                     <Grid>
                       <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={extraWireChecked}
-                            onChange={() => setExtraWireChecked(!extraWireChecked)}
-                          />
-                        }
+                        control={<Checkbox checked={extraWireChecked} onChange={() => setExtraWireChecked(!extraWireChecked)} />}
                         label={`Add Extra Wire (@ ${formatCurrency(selectedProduct.wire)}/m)`}
                       />
                       <AnimatePresence>
@@ -271,12 +325,7 @@ export default function SolarPricingPage() {
 
                     <Grid>
                       <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={extraHeightChecked}
-                            onChange={() => setExtraHeightChecked(!extraHeightChecked)}
-                          />
-                        }
+                        control={<Checkbox checked={extraHeightChecked} onChange={() => setExtraHeightChecked(!extraHeightChecked)} />}
                         label={`Include Extra Height (@ ${formatCurrency(EXTRA_HEIGHT_RATE)} per ft/m × kW)`}
                       />
                       <AnimatePresence>
@@ -297,21 +346,10 @@ export default function SolarPricingPage() {
 
                     <Grid>
                       <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-                        <Button variant="outlined" color="error" onClick={handleReset} startIcon={<RestartAlt />}>
-                          Reset All
-                        </Button>
-                        <Button variant="contained" onClick={handlePrint} startIcon={<PictureAsPdf />}>
-                          Print Internal PDF
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          onClick={handleOpenDialog}
-                          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <WhatsApp />}
-                          disabled={loading}
-                        >
-                          {loading ? "Sending..." : "Send on WhatsApp"}
-                        </Button>
+                        <Button variant="outlined" color="error" onClick={handleReset} startIcon={<RestartAlt />}>Reset All</Button>
+                        <Button variant="contained" onClick={async () => { await saveQuoteRecord({ ...buildQuotePayload(), channel: 'sales_print', taxRate: 0.089, currency: 'INR' }); handlePrintSales?.(); }} startIcon={<Print />}>Print Sales Copy</Button>
+                        <Button variant="contained" onClick={() => handleOpenDialog("customerPrint")} startIcon={<PictureAsPdf />}>Print Customer Copy</Button>
+                        <Button variant="contained" color="success" onClick={() => handleOpenDialog("whatsapp")} startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <WhatsApp />} disabled={loading}>{loading ? "Sending..." : "Send on WhatsApp"}</Button>
                       </Box>
                     </Grid>
                   </Grid>
@@ -338,40 +376,16 @@ export default function SolarPricingPage() {
                     ]
                       .filter((item) => item.value > 0 || item.label === "Base Price")
                       .map((item) => (
-                        <Box
-                          key={item.label}
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            pl: item.indent ? 2 : 0,
-                            color: item.indent ? "text.secondary" : "text.primary",
-                            fontSize: item.indent ? "0.9rem" : "1rem",
-                          }}
-                        >
+                        <Box key={item.label} sx={{ display: "flex", justifyContent: "space-between", pl: item.indent ? 2 : 0, color: item.indent ? "text.secondary" : "text.primary", fontSize: item.indent ? "0.9rem" : "1rem" }}>
                           <Typography variant="body1">{item.label}:</Typography>
-                          <Typography variant="body1" fontWeight={item.bold ? 600 : 400}>
-                            {formatCurrency(item.value)}
-                          </Typography>
+                          <Typography variant="body1" fontWeight={item.bold ? 600 : 400}>{formatCurrency(item.value)}</Typography>
                         </Box>
                       ))}
                     <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                      <Typography>Subtotal (Before GST):</Typography>
-                      <Typography>{formatCurrency(subtotal)}</Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                      <Typography>GST (8.9%):</Typography>
-                      <Typography>{formatCurrency(gstAmount)}</Typography>
-                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>Subtotal (Before GST):</Typography><Typography>{formatCurrency(subtotal)}</Typography></Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>GST (8.9%):</Typography><Typography>{formatCurrency(gstAmount)}</Typography></Box>
                     <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                      <Typography variant="h6" fontWeight="bold">
-                        Total (After GST):
-                      </Typography>
-                      <Typography variant="h6" fontWeight="bold">
-                        {formatCurrency(total)}
-                      </Typography>
-                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Total (After GST):</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(total)}</Typography></Box>
                     {safeDiscount > 0 && (
                       <Box sx={{ display: "flex", justifyContent: "space-between", color: "success.main" }}>
                         <Typography variant="h6" fontWeight="bold">Discount:</Typography>
@@ -379,10 +393,7 @@ export default function SolarPricingPage() {
                       </Box>
                     )}
                     <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                      <Typography variant="h6" fontWeight="bold">Grand Total:</Typography>
-                      <Typography variant="h6" fontWeight="bold">{formatCurrency(grandTotal)}</Typography>
-                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Grand Total:</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(grandTotal)}</Typography></Box>
                   </Box>
                 </Paper>
               </motion.div>
@@ -392,105 +403,102 @@ export default function SolarPricingPage() {
       </Box>
 
       <Dialog open={dialogOpen} onClose={handleCloseDialog}>
-        <DialogTitle>Send Quotation to Customer</DialogTitle>
+        <DialogTitle>{dialogMode === "whatsapp" ? "Send Quotation to Customer" : "Customer Copy Print"}</DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Enter customer details. The quote will be sent to WhatsApp.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            name="name"
-            label="Customer Name"
-            type="text"
-            fullWidth
-            variant="standard"
-            value={customerInfo.name}
-            onChange={handleCustomerInfoChange}
-          />
-          <TextField
-            margin="dense"
-            name="phone"
-            label="Phone Number (10 digits)"
-            type="tel"
-            fullWidth
-            variant="standard"
-            value={customerInfo.phone}
-            onChange={handleCustomerInfoChange}
-          />
-          <TextField
-            margin="dense"
-            name="address"
-            label="Address"
-            type="text"
-            fullWidth
-            variant="standard"
-            value={customerInfo.address}
-            onChange={handleCustomerInfoChange}
-          />
+          <DialogContentText sx={{ mb: 2 }}>{dialogMode === "whatsapp" ? "Enter customer details. The quote will be sent to WhatsApp." : "Enter customer details to print a customer-friendly copy."}</DialogContentText>
+          <TextField autoFocus margin="dense" name="name" label="Customer Name" type="text" fullWidth variant="standard" value={customerInfo.name} onChange={handleCustomerInfoChange} />
+          <TextField margin="dense" name="phone" label="Phone Number (10 digits)" type="tel" fullWidth variant="standard" value={customerInfo.phone} onChange={handleCustomerInfoChange} />
+          <TextField margin="dense" name="address" label="Address" type="text" fullWidth variant="standard" value={customerInfo.address} onChange={handleCustomerInfoChange} />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSendQuote} variant="contained" color="success">
-            Send
-          </Button>
+          <Button onClick={handleDialogPrimary} variant="contained" color={dialogMode === "whatsapp" ? "success" : "primary"}>{dialogMode === "whatsapp" ? (loading ? "Sending..." : "Send") : (loading ? "Printing..." : "Print")}</Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={notification.open}
-        autoHideDuration={6000}
-        onClose={() => setNotification({ ...notification, open: false })}
-      >
-        <Alert
-          onClose={() => setNotification({ ...notification, open: false })}
-          severity={notification.severity}
-          sx={{ width: "100%" }}
-        >
-          {notification.message}
-        </Alert>
+      <Snackbar open={notification.open} autoHideDuration={6000} onClose={() => setNotification({ ...notification, open: false })}>
+        <Alert onClose={() => setNotification({ ...notification, open: false })} severity={notification.severity} sx={{ width: "100%" }}>{notification.message}</Alert>
       </Snackbar>
 
-      {/* Hidden printable area */}
+      {/* Hidden printable areas */}
       <div style={{ display: "none" }}>
-        <div ref={printRef} style={{ padding: 32, color: "black" }}>
-          <Typography variant="h4" gutterBottom>
-            Arpit Solar Quotation
-          </Typography>
+        {/* Sales Copy (Internal) */}
+        <div ref={salesPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
+          <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <img src={companyDetails.logo} alt="Arpit Solar Logo" style={{ maxWidth: 140 }} />
+            <Box textAlign="right">
+              <Typography variant="h6">Arpit Solar - Sales Copy</Typography>
+              <Typography variant="body2">{nowString}</Typography>
+              <Typography variant="body2">Salesperson: {salespersonName || "N/A"}</Typography>
+              <Typography variant="body2">Location: {location}</Typography>
+            </Box>
+          </Box>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="h6" gutterBottom>System Details</Typography>
+          <Typography>System: {selectedProduct!.kWp} kWp (Phase {selectedProduct!.phase})</Typography>
+          <Typography>Module: {selectedProduct!.module}W × {selectedProduct!.qty} Qty</Typography>
           <Divider sx={{ my: 2 }} />
-          <Typography variant="h6">Customer Details:</Typography>
-          <Typography>
-            <strong>Name:</strong> {customerInfo.name || "N/A"}
-          </Typography>
-          <Typography>
-            <strong>Phone:</strong> {customerInfo.phone || "N/A"}
-          </Typography>
-          <Typography>
-            <strong>Address:</strong> {customerInfo.address || "N/A"}
-          </Typography>
+          <Typography variant="h6" gutterBottom>Price Breakdown</Typography>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableBody>
+                <TableRow><TableCell>Base Price</TableCell><TableCell align="right">{formatCurrency(basePrice)}</TableCell></TableRow>
+                <TableRow><TableCell>Extra Margin</TableCell><TableCell align="right">{formatCurrency(marginPrice)}</TableCell></TableRow>
+                <TableRow><TableCell sx={{ pl: 4, color: "text.secondary" }}>Vendor Margin (60%)</TableCell><TableCell align="right" sx={{ color: "text.secondary" }}>{formatCurrency(marginPrice * 0.6)}</TableCell></TableRow>
+                <TableRow><TableCell sx={{ pl: 4, color: "text.secondary" }}>Salesperson Margin (40%)</TableCell><TableCell align="right" sx={{ color: "text.secondary" }}>{formatCurrency(marginPrice * 0.4)}</TableCell></TableRow>
+                {wirePrice > 0 && (<TableRow><TableCell>Extra Wire Cost</TableCell><TableCell align="right">{formatCurrency(wirePrice)}</TableCell></TableRow>)}
+                {heightPrice > 0 && (<TableRow><TableCell>Extra Height Cost (H × Rate × kW)</TableCell><TableCell align="right">{formatCurrency(heightPrice)}</TableCell></TableRow>)}
+                {outOfVnsPrice > 0 && (<TableRow><TableCell>Out of Varanasi Charge</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
+                <TableRow><TableCell sx={{ fontWeight: 600 }}>Subtotal (Before GST)</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell></TableRow>
+                <TableRow><TableCell>GST (8.9%)</TableCell><TableCell align="right">{formatCurrency(gstAmount)}</TableCell></TableRow>
+                <TableRow><TableCell>Total (After GST)</TableCell><TableCell align="right">{formatCurrency(total)}</TableCell></TableRow>
+                {safeDiscount > 0 && (<TableRow><TableCell sx={{ color: "success.main", fontWeight: 600 }}>Discount</TableCell><TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>-{formatCurrency(safeDiscount)}</TableCell></TableRow>)}
+                <TableRow sx={{ '& > *': { fontWeight: 700 } }}><TableCell>Grand Total</TableCell><TableCell align="right">{formatCurrency(grandTotal)}</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
           <Divider sx={{ my: 2 }} />
-          <Typography variant="h6">System Details:</Typography>
-          <Typography>
-            <strong>System:</strong> {selectedProduct.kWp} kWp (Phase {selectedProduct.phase})
-          </Typography>
-          <Typography>
-            <strong>Module:</strong> {selectedProduct.module}W × {selectedProduct.qty} Qty
-          </Typography>
+          <Typography variant="caption">Internal copy for sales records. Not intended for customer distribution.</Typography>
+        </div>
+
+        {/* Customer Copy */}
+        <div ref={customerPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
+          <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <img src={companyDetails.logo} alt="Arpit Solar Logo" style={{ maxWidth: 140 }} />
+            <Box textAlign="right">
+              <Typography variant="h6">Arpit Solar - Quotation</Typography>
+              <Typography variant="body2">Date: {todayString}</Typography>
+            </Box>
+          </Box>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="h6" gutterBottom>Customer Details</Typography>
+          <Typography><strong>Name:</strong> {customerInfo.name || "N/A"}</Typography>
+          <Typography><strong>Phone:</strong> {customerInfo.phone || "N/A"}</Typography>
+          <Typography><strong>Address:</strong> {customerInfo.address || "N/A"}</Typography>
           <Divider sx={{ my: 2 }} />
-          <Typography>
-            <strong>Subtotal (Before GST):</strong> {formatCurrency(subtotal)}
-          </Typography>
-          <Typography>
-            <strong>GST (8.9%):</strong> {formatCurrency(gstAmount)}
-          </Typography>
-          {safeDiscount > 0 && (
-            <Typography>
-              <strong>Discount:</strong> -{formatCurrency(safeDiscount)}
-            </Typography>
-          )}
-          <Typography sx={{ fontWeight: "bold", fontSize: "1.1rem" }}>
-            <strong>Grand Total:</strong> {formatCurrency(grandTotal)}
-          </Typography>
+          <Typography variant="h6" gutterBottom>System Details</Typography>
+          <Typography>System: {selectedProduct!.kWp} kWp (Phase {selectedProduct!.phase})</Typography>
+          <Typography>Module: {selectedProduct!.module}W × {selectedProduct!.qty} Qty</Typography>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" gutterBottom>Price Summary</Typography>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableBody>
+                <TableRow><TableCell>Base Price</TableCell><TableCell align="right">{formatCurrency(basePrice)}</TableCell></TableRow>
+                {marginPrice > 0 && (<TableRow><TableCell>Extra Margin</TableCell><TableCell align="right">{formatCurrency(marginPrice)}</TableCell></TableRow>)}
+                {wirePrice > 0 && (<TableRow><TableCell>Extra Wire Cost</TableCell><TableCell align="right">{formatCurrency(wirePrice)}</TableCell></TableRow>)}
+                {heightPrice > 0 && (<TableRow><TableCell>Extra Height Cost</TableCell><TableCell align="right">{formatCurrency(heightPrice)}</TableCell></TableRow>)}
+                {outOfVnsPrice > 0 && (<TableRow><TableCell>Out of Varanasi Charge</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
+                <TableRow><TableCell sx={{ fontWeight: 600 }}>Subtotal (Before GST)</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell></TableRow>
+                <TableRow><TableCell>GST (8.9%)</TableCell><TableCell align="right">{formatCurrency(gstAmount)}</TableCell></TableRow>
+                <TableRow><TableCell>Total (After GST)</TableCell><TableCell align="right">{formatCurrency(total)}</TableCell></TableRow>
+                {safeDiscount > 0 && (<TableRow><TableCell sx={{ color: "success.main", fontWeight: 600 }}>Discount</TableCell><TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>-{formatCurrency(safeDiscount)}</TableCell></TableRow>)}
+                <TableRow sx={{ '& > *': { fontWeight: 700 } }}><TableCell>Grand Total</TableCell><TableCell align="right">{formatCurrency(grandTotal)}</TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="caption">Thank you for considering Arpit Solar.</Typography>
         </div>
       </div>
     </>

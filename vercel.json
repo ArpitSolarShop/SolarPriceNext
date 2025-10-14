@@ -1,7 +1,9 @@
 {
   "functions": {
-    "src/app/api/**/*.ts": {
-      "includeFiles": "node_modules/@sparticuz/chromium/files/**"
+    "*": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/**/*"
     }
   }
 }

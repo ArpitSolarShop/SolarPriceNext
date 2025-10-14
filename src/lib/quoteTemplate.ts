@@ -22,10 +22,13 @@
 
 export const generateQuoteHtml = (data: any): string => {
     const { customerInfo, selectedProduct, calculations } = data;
-    // ✅ 1. Destructure the new discount and finalTotal fields
-    const { basePrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount, finalTotal } = calculations;
+    // ✅ Ensure calculations shape is safe and compute discount/grand total on the server
+    const { basePrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount } = calculations || ({} as any);
 
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val);
+    const t = typeof total === 'number' ? total : 0;
+    const safeDiscount = typeof discount === 'number' && discount > 0 ? +discount : 0;
+    const grandTotal = +(t - safeDiscount).toFixed(2);
 
     return `<!DOCTYPE html>
     <html>
@@ -81,11 +84,11 @@ export const generateQuoteHtml = (data: any): string => {
                 <tr><td>GST @ 8.9%</td><td style="text-align:right;">${formatCurrency(gstAmount)}</td></tr>
                 <tr><td style="font-weight: bold;">Total Amount</td><td style="text-align:right; font-weight: bold;">${formatCurrency(total)}</td></tr>
                 
-                ${discount > 0 ? `<tr style="color: green;"><td style="font-weight: bold;">Discount</td><td style="text-align:right; font-weight: bold;">-${formatCurrency(discount)}</td></tr>` : ''}
+                ${safeDiscount > 0 ? `<tr style=\"color: green;\"><td style=\"font-weight: bold;\">Discount</td><td style=\"text-align:right; font-weight: bold;\">-${formatCurrency(safeDiscount)}</td></tr>` : ''}
 
                 <tr class="total-row">
                     <td style="font-size: 16px;">Grand Total</td>
-                    <td style="text-align:right; font-size: 16px;">${formatCurrency(finalTotal)}</td>
+                    <td style=\"text-align:right; font-size: 16px;\">${formatCurrency(grandTotal)}</td>
                 </tr>
             </table>
             <div class="footer">This is a computer-generated quotation.</div>

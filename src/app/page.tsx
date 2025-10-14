@@ -33,6 +33,7 @@ import {
 } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import Grid from "@mui/material/Grid";
+import Image from "next/image";
 import { SolarPower, PriceCheck, RestartAlt, PictureAsPdf, WhatsApp, Print } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useReactToPrint } from "react-to-print";
@@ -218,7 +219,7 @@ export default function SolarPricingPage() {
       <Box sx={{ p: { xs: 2, sm: 4 }, bgcolor: "grey.50", minHeight: "100vh" }}>
         <Box sx={{ maxWidth: "xl", mx: "auto" }}>
           <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-            <img src={companyDetails.logo} alt="Arpit Solar Logo" style={{ maxWidth: "180px", height: "auto" }} />
+            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={180} height={60} priority />
           </Box>
           <Typography variant="h4" component="h1" sx={{ mb: 4, textAlign: "center", fontWeight: "bold" }}>
             <SolarPower sx={{ verticalAlign: "middle" }} /> Solar Pricing Calculator
@@ -425,7 +426,7 @@ export default function SolarPricingPage() {
         {/* Sales Copy (Internal) */}
         <div ref={salesPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
           <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <img src={companyDetails.logo} alt="Arpit Solar Logo" style={{ maxWidth: 140 }} />
+            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} />
             <Box textAlign="right">
               <Typography variant="h6">Arpit Solar - Sales Copy</Typography>
               <Typography variant="body2">{nowString}</Typography>
@@ -464,7 +465,7 @@ export default function SolarPricingPage() {
         {/* Customer Copy */}
         <div ref={customerPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
           <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <img src={companyDetails.logo} alt="Arpit Solar Logo" style={{ maxWidth: 140 }} />
+            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} />
             <Box textAlign="right">
               <Typography variant="h6">Arpit Solar - Quotation</Typography>
               <Typography variant="body2">Date: {todayString}</Typography>

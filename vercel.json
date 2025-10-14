@@ -1,23 +1,7 @@
 {
   "functions": {
-    "src/app/api/**/route.ts": {
+    "app/api/**/route.js": {
       "maxDuration": 60,
-      
-      "includeFiles": "node_modules/@sparticuz/chromium/**/*"
-    },
-    "src/app/api/**/route.js": {
-      "maxDuration": 60,
-     
-      "includeFiles": "node_modules/@sparticuz/chromium/**/*"
-    },
-    "src/pages/api/**/*.ts": {
-      "maxDuration": 60,
-     
-      "includeFiles": "node_modules/@sparticuz/chromium/**/*"
-    },
-    "src/pages/api/**/*.js": {
-      "maxDuration": 60,
-     
       "includeFiles": "node_modules/@sparticuz/chromium/**/*"
     }
   }

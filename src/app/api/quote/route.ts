@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+// Use dynamic imports to support serverless-compatible Chromium in production
 import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppMessage } from '../../../lib/whatsapp';
 import { generateQuoteHtml } from '../../../lib/quoteTemplate';
+
+export const runtime = 'nodejs';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
 
@@ -11,11 +13,24 @@ export async function POST(request: Request) {
     const quoteData = await request.json();
     const htmlContent = generateQuoteHtml(quoteData);
 
-    // FIXED: Changed headless from "new" to true
-    const browser = await puppeteer.launch({ 
-      headless: true, 
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
-    });
+    // Launch Chromium appropriately for the environment
+    let browser: any;
+    if (process.env.NODE_ENV === 'production') {
+      const chromium = await import('@sparticuz/chromium');
+      const puppeteerCore = await import('puppeteer-core');
+      browser = await puppeteerCore.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+    } else {
+      const puppeteer = await import('puppeteer');
+      browser = await puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    }
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });

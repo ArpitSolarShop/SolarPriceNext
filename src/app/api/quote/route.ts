@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     // Launch Chromium appropriately for the environment
     let browser: any;
     if (process.env.NODE_ENV === 'production') {
-      const chromium = await import('@sparticuz/chromium');
-      const puppeteerCore = await import('puppeteer-core');
+      const { default: chromium } = await import('@sparticuz/chromium');
+      const { default: puppeteerCore } = await import('puppeteer-core');
       browser = await puppeteerCore.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
@@ -25,8 +25,8 @@ export async function POST(request: Request) {
         headless: chromium.headless,
       });
     } else {
-      const puppeteer = await import('puppeteer');
-      browser = await puppeteer.default.launch({
+      const { default: puppeteer } = await import('puppeteer');
+      browser = await puppeteer.launch({
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });

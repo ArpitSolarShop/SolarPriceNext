@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
   },
@@ -16,11 +16,11 @@
     "@mui/material": "^7.3.4",
     "@mui/material-nextjs": "^7.3.3",
     "@sparticuz/chromium": "^141.0.0",
+    "@sparticuz/chromium-min": "^141.0.0",
     "@supabase/supabase-js": "^2.75.0",
     "axios": "^1.12.2",
     "framer-motion": "^12.23.24",
     "next": "15.5.4",
-    "puppeteer": "^24.24.1",
     "puppeteer-core": "^24.24.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -34,6 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
+    "puppeteer": "^24.24.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

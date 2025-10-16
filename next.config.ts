@@ -21,8 +21,9 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Key is renamed and moved to the top level
-  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
+  experimental: {
+    serverComponentsExternalPackages: ['@sparticuz/chromium', 'puppeteer-core']
+  }
 };
 
 export default nextConfig;

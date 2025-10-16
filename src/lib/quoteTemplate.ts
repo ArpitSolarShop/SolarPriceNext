@@ -21,7 +21,7 @@
 // src/lib/quoteTemplate.ts
 
 export const generateQuoteHtml = (data: any): string => {
-    const { customerInfo, selectedProduct, calculations } = data;
+    const { customerInfo, selectedProduct, calculations, components = [], logoUrl } = data;
     // ✅ Ensure calculations shape is safe and compute discount/grand total on the server
     const { basePrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount } = calculations || ({} as any);
 
@@ -33,6 +33,8 @@ export const generateQuoteHtml = (data: any): string => {
     return `<!DOCTYPE html>
     <html>
     <head>
+        <meta charset=\"utf-8\" />
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
         <style>
             body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #333; }
             .container { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #eee; }
@@ -46,18 +48,20 @@ export const generateQuoteHtml = (data: any): string => {
             th { background-color: #f2f2f2; }
             .total-row { background-color: #f2f2f2; font-weight: bold; }
             .footer { text-align: center; font-size: 10px; color: #777; margin-top: 30px; }
+            @page { size: A4; margin: 10mm; }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <img src="https://vqusgnzkxkzidjsohips.supabase.co/storage/v1/object/public/quotes/logo.png" alt="Company Logo">
+                <img src="${logoUrl || '/logo.png'}" alt="Company Logo" style="height:auto;width:150px;">
                 <div class="company-details">
-                    <strong>Arpit Solar</strong><br>
-                    Sh16/114-25-K-2, Sharvodayanagar<br>
-                    Varanasi 221003 (UP)<br>
-                    <strong>GSTIN:</strong> 09APKPM6299L1ZW<br>
-                    <strong>Contact:</strong> 9044555572 | info@arpitsolar.com
+                    <strong>Arpit Solar Shop</strong><br>
+                    SH16/114-25-K-2, Sharvodayanagar,<br>
+                    Varanasi – 221003, Uttar Pradesh<br>
+                    GSTIN: 09APKPM6299L1ZW<br>
+                    Contact: 9044555572<br>
+                    Email: info@arpitsolar.com
                 </div>
             </div>
             <h1 class="quote-title">Quotation</h1>
@@ -75,11 +79,23 @@ export const generateQuoteHtml = (data: any): string => {
                 <tr><td>Module Quantity</td><td>${selectedProduct.qty}</td></tr>
             </table>
             <table>
+                <tr><th>Component</th><th>Brand/Spec</th><th style="text-align:right;">Quantity</th></tr>
+                ${Array.isArray(components) && components.length > 0
+                    ? components.map((c: any) => `
+                        <tr>
+                            <td>${c.name ?? ''}</td>
+                            <td>${[c.brand, c.spec].filter(Boolean).join(' ')}</td>
+                            <td style=\"text-align:right;\">${c.quantity ?? ''}</td>
+                        </tr>
+                    `).join('')
+                    : ''}
+            </table>
+            <table>
                 <tr><th>Pricing</th><th style="text-align:right;">Amount</th></tr>
                 <tr><td>Base System Price</td><td style="text-align:right;">${formatCurrency(basePrice)}</td></tr>
                 ${wirePrice > 0 ? `<tr><td>Extra Wire Cost</td><td style="text-align:right;">${formatCurrency(wirePrice)}</td></tr>` : ''}
                 ${heightPrice > 0 ? `<tr><td>Extra Height Cost</td><td style="text-align:right;">${formatCurrency(heightPrice)}</td></tr>` : ''}
-                ${outOfVnsPrice > 0 ? `<tr><td>Out of Varanasi Charge</td><td style="text-align:right;">${formatCurrency(outOfVnsPrice)}</td></tr>` : ''}
+                ${outOfVnsPrice > 0 ? `<tr><td>Logistics & Delivery Fee</td><td style="text-align:right;">${formatCurrency(outOfVnsPrice)}</td></tr>` : ''}
                 <tr style="font-weight: bold;"><td>Subtotal</td><td style="text-align:right;">${formatCurrency(subtotal)}</td></tr>
                 <tr><td>GST @ 8.9%</td><td style="text-align:right;">${formatCurrency(gstAmount)}</td></tr>
                 <tr><td style="font-weight: bold;">Total Amount</td><td style="text-align:right; font-weight: bold;">${formatCurrency(total)}</td></tr>
@@ -96,3 +112,11 @@ export const generateQuoteHtml = (data: any): string => {
     </body>
     </html>`;
 };
+
+
+
+
+
+
+
+

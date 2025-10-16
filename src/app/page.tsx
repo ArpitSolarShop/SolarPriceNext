@@ -38,14 +38,15 @@ import { SolarPower, PriceCheck, RestartAlt, PictureAsPdf, WhatsApp, Print } fro
 import { motion, AnimatePresence } from "framer-motion";
 import { useReactToPrint } from "react-to-print";
 
-import type { Product } from "../types/quote";
+import type { Product, QuoteComponent } from "../types/quote";
 import { products, companyDetails, GST_RATE, EXTRA_HEIGHT_RATE } from "../data/priceList";
+import { defaultComponents } from "../data/components";
 import { formatCurrency } from "../lib/utils";
 
 type DialogMode = "whatsapp" | "customerPrint";
 
 export default function SolarPricingPage() {
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(products[0] || null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [extraMargin, setExtraMargin] = useState<number>(0);
   const [extraWireChecked, setExtraWireChecked] = useState<boolean>(false);
   const [extraWireLength, setExtraWireLength] = useState<number>(0);
@@ -56,6 +57,7 @@ export default function SolarPricingPage() {
   const [salespersonName, setSalespersonName] = useState<string>("");
   const [nowString, setNowString] = useState("");
   const [todayString, setTodayString] = useState("");
+  const components: QuoteComponent[] = (defaultComponents as unknown) as QuoteComponent[];
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<DialogMode>("whatsapp");
@@ -82,7 +84,7 @@ export default function SolarPricingPage() {
     total,
   } = useMemo(() => {
     if (!selectedProduct)
-      return { basePrice: 0, marginPrice: 0, wirePrice: 0, heightPrice: 0, outOfVnsPrice: 0, subtotal: 0, gstAmount: 0, total: 0 };
+      return { basePrice: 0, marginPrice: extraMargin, wirePrice: 0, heightPrice: 0, outOfVnsPrice: 0, subtotal: 0, gstAmount: 0, total: 0 };
     const basePriceVal = selectedProduct.price;
     const marginPriceVal = extraMargin;
     const wirePriceVal = extraWireChecked ? extraWireLength * selectedProduct.wire : 0;
@@ -100,7 +102,7 @@ export default function SolarPricingPage() {
   const grandTotal = Math.max(0, +(total - safeDiscount).toFixed(2));
 
   const handleReset = () => {
-    setSelectedProduct(products[0] || null);
+    setSelectedProduct(null);
     setExtraMargin(0);
     setExtraWireChecked(false);
     setExtraWireLength(0);
@@ -123,6 +125,7 @@ export default function SolarPricingPage() {
   };
 
   const buildQuotePayload = () => {
+    if (!selectedProduct) return null;
     const customerSubtotal = basePrice + marginPrice + wirePrice + heightPrice + outOfVnsPrice;
     const customerGst = +(customerSubtotal * GST_RATE).toFixed(2);
     const customerTotal = +(customerSubtotal + customerGst).toFixed(2);
@@ -144,6 +147,7 @@ export default function SolarPricingPage() {
         discount: safeDiscount,
         grandTotal: Math.max(0, +(customerTotal - safeDiscount).toFixed(2)),
       },
+      components,
     };
   };
 
@@ -166,6 +170,7 @@ export default function SolarPricingPage() {
     const payload = { ...buildQuotePayload(), channel: 'whatsapp', taxRate: 0.089, currency: 'INR' };
 
     try {
+      if (!payload) throw new Error("Please select a product before sending.");
       const response = await fetch("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Failed to send quote");
@@ -181,6 +186,10 @@ export default function SolarPricingPage() {
 
   const printCustomerCopy = async () => {
     // Validation optional for print; keep consistent with WhatsApp
+    if (!selectedProduct) {
+      setNotification({ open: true, message: "Please select a product before printing.", severity: "error" });
+      return;
+    }
     if (!customerInfo.name || !customerInfo.phone || !/^\d{10}$/.test(customerInfo.phone)) {
       setNotification({ open: true, message: "Please fill customer name and a valid 10-digit phone number.", severity: "error" });
       return;
@@ -206,7 +215,7 @@ export default function SolarPricingPage() {
     return printCustomerCopy();
   };
 
-  if (!selectedProduct) return <Typography>No Products Available</Typography>;
+  // Allow page to render without a selected product; guard dependent UI below
 
   const animationVariants = {
     hidden: { opacity: 0, y: -20 },
@@ -226,6 +235,47 @@ export default function SolarPricingPage() {
           </Typography>
 
           <Grid container spacing={4}>
+            {/* Price Breakdown - moved above all */}
+            <Grid>
+              <motion.div animate={{ scale: [1, 1.02, 1] }} transition={{ duration: 0.5 }}>
+                <Paper elevation={4} sx={{ borderRadius: 3, p: 3, background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)' }}>
+                  <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <PriceCheck /> Price Breakdown
+                  </Typography>
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                    {[
+                      { label: "Base Price", value: basePrice },
+                      { label: "Extra Margin", value: marginPrice, bold: true },
+                      { label: "Vendor Margin (60%)", value: marginPrice * 0.6, indent: true },
+                      { label: "Salesperson Margin (40%)", value: marginPrice * 0.4, indent: true },
+                      { label: "Extra Wire Cost", value: wirePrice },
+                      { label: "Extra Height Cost", value: heightPrice },
+                      { label: "Logistics & Delivery Fee", value: outOfVnsPrice },
+                    ]
+                      .filter((item) => item.value > 0 || item.label === "Base Price")
+                      .map((item) => (
+                        <Box key={item.label} sx={{ display: "flex", justifyContent: "space-between", pl: item.indent ? 2 : 0, color: item.indent ? "text.secondary" : "text.primary", fontSize: item.indent ? "0.9rem" : "1rem" }}>
+                          <Typography variant="body1">{item.label}:</Typography>
+                          <Typography variant="body1" fontWeight={item.bold ? 600 : 400}>{formatCurrency(item.value)}</Typography>
+                        </Box>
+                      ))}
+                    <Divider sx={{ my: 1 }} />
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>Subtotal (Before GST):</Typography><Typography>{formatCurrency(subtotal)}</Typography></Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>GST (8.9%):</Typography><Typography>{formatCurrency(gstAmount)}</Typography></Box>
+                    <Divider sx={{ my: 1 }} />
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Total (After GST):</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(total)}</Typography></Box>
+                    {safeDiscount > 0 && (
+                      <Box sx={{ display: "flex", justifyContent: "space-between", color: "success.main" }}>
+                        <Typography variant="h6" fontWeight="bold">Discount:</Typography>
+                        <Typography variant="h6" fontWeight="bold">-{formatCurrency(safeDiscount)}</Typography>
+                      </Box>
+                    )}
+                    <Divider sx={{ my: 1 }} />
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Grand Total:</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(grandTotal)}</Typography></Box>
+                  </Box>
+                </Paper>
+              </motion.div>
+            </Grid>
             {/* Left column - Configuration */}
             <Grid>
               <Card sx={{ boxShadow: 3, borderRadius: 3 }}>
@@ -235,12 +285,14 @@ export default function SolarPricingPage() {
                   </Typography>
                   <Grid container spacing={3}>
                     <Grid>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth sx={{ minWidth: 320 }}>
                         <InputLabel id="product-select-label">Select Product</InputLabel>
                         <Select
                           labelId="product-select-label"
                           label="Select Product"
-                          value={`${selectedProduct.kWp}-${selectedProduct.phase}`}
+                          size="medium"
+                          sx={{ height: 56 }}
+                          value={selectedProduct ? `${selectedProduct.kWp}-${selectedProduct.phase}` : ""}
                           onChange={(e: SelectChangeEvent) => {
                             const [kWp, phase] = e.target.value.split("-").map(parseFloat);
                             setSelectedProduct(
@@ -248,6 +300,7 @@ export default function SolarPricingPage() {
                             );
                           }}
                         >
+                          <MenuItem value=""><em>Select Product</em></MenuItem>
                           {products.map((p) => (
                             <MenuItem key={`${p.kWp}-${p.phase}`} value={`${p.kWp}-${p.phase}`}>{
                               `${p.kWp} kWp • Phase ${p.phase} • ${formatCurrency(p.price)}`
@@ -306,7 +359,7 @@ export default function SolarPricingPage() {
                     <Grid>
                       <FormControlLabel
                         control={<Checkbox checked={extraWireChecked} onChange={() => setExtraWireChecked(!extraWireChecked)} />}
-                        label={`Add Extra Wire (@ ${formatCurrency(selectedProduct.wire)}/m)`}
+                        label={`Add Extra Wire (@ ${formatCurrency(selectedProduct ? selectedProduct.wire : 0)}/m)`}
                       />
                       <AnimatePresence>
                         {extraWireChecked && (
@@ -358,46 +411,26 @@ export default function SolarPricingPage() {
               </Card>
             </Grid>
 
-            {/* Right column - Price Breakdown */}
+            {/* (moved) */}
+
+            {/* Components Preview */}
             <Grid>
-              <motion.div animate={{ scale: [1, 1.02, 1] }} transition={{ duration: 0.5 }}>
-                <Paper elevation={3} sx={{ borderRadius: 3, p: 3, height: "100%" }}>
-                  <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>
-                    <PriceCheck /> Price Breakdown
-                  </Typography>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    {[
-                      { label: "Base Price", value: basePrice },
-                      { label: "Extra Margin", value: marginPrice, bold: true },
-                      { label: "Vendor Margin (60%)", value: marginPrice * 0.6, indent: true },
-                      { label: "Salesperson Margin (40%)", value: marginPrice * 0.4, indent: true },
-                      { label: "Extra Wire Cost", value: wirePrice },
-                      { label: "Extra Height Cost", value: heightPrice },
-                      { label: "Out of Varanasi Charge", value: outOfVnsPrice },
-                    ]
-                      .filter((item) => item.value > 0 || item.label === "Base Price")
-                      .map((item) => (
-                        <Box key={item.label} sx={{ display: "flex", justifyContent: "space-between", pl: item.indent ? 2 : 0, color: item.indent ? "text.secondary" : "text.primary", fontSize: item.indent ? "0.9rem" : "1rem" }}>
-                          <Typography variant="body1">{item.label}:</Typography>
-                          <Typography variant="body1" fontWeight={item.bold ? 600 : 400}>{formatCurrency(item.value)}</Typography>
-                        </Box>
+              <Paper elevation={1} sx={{ borderRadius: 3, p: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>Included Components</Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableBody>
+                      {components.map((c) => (
+                        <TableRow key={`${c.name}-${c.quantity}`}>
+                          <TableCell>{c.name}</TableCell>
+                          <TableCell>{[c.brand, c.spec].filter(Boolean).join(' ')}</TableCell>
+                          <TableCell align="right">{c.quantity}</TableCell>
+                        </TableRow>
                       ))}
-                    <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>Subtotal (Before GST):</Typography><Typography>{formatCurrency(subtotal)}</Typography></Box>
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography>GST (8.9%):</Typography><Typography>{formatCurrency(gstAmount)}</Typography></Box>
-                    <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Total (After GST):</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(total)}</Typography></Box>
-                    {safeDiscount > 0 && (
-                      <Box sx={{ display: "flex", justifyContent: "space-between", color: "success.main" }}>
-                        <Typography variant="h6" fontWeight="bold">Discount:</Typography>
-                        <Typography variant="h6" fontWeight="bold">-{formatCurrency(safeDiscount)}</Typography>
-                      </Box>
-                    )}
-                    <Divider sx={{ my: 1 }} />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}><Typography variant="h6" fontWeight="bold">Grand Total:</Typography><Typography variant="h6" fontWeight="bold">{formatCurrency(grandTotal)}</Typography></Box>
-                  </Box>
-                </Paper>
-              </motion.div>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
             </Grid>
           </Grid>
         </Box>
@@ -425,20 +458,52 @@ export default function SolarPricingPage() {
       <div style={{ display: "none" }}>
         {/* Sales Copy (Internal) */}
         <div ref={salesPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
-          <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} />
-            <Box textAlign="right">
-              <Typography variant="h6">Arpit Solar - Sales Copy</Typography>
-              <Typography variant="body2">{nowString}</Typography>
-              <Typography variant="body2">Salesperson: {salespersonName || "N/A"}</Typography>
-              <Typography variant="body2">Location: {location}</Typography>
-            </Box>
+          <Box sx={{ mb: 2, display: "flex", justifyContent: "flex-start", alignItems: "center" }}>
+            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} style={{ height: 'auto' }} />
+          </Box>
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="h6">Arpit Solar Shop - Sales Copy</Typography>
+            <Typography variant="body2">{nowString}</Typography>
+            <Typography variant="body2">Salesperson: {salespersonName || "N/A"}</Typography>
+            <Typography variant="body2">Location: {location}</Typography>
           </Box>
           <Divider sx={{ my: 1 }} />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700}>Arpit Solar Shop</Typography>
+              <Typography variant="body2">SH16/114-25-K-2, Sharvodayanagar,</Typography>
+              <Typography variant="body2">Varanasi – 221003, Uttar Pradesh</Typography>
+            </Box>
+            <Box textAlign="right">
+              <Typography variant="body2">GSTIN: 09APKPM6299L1ZW</Typography>
+              <Typography variant="body2">Contact: 9044555572</Typography>
+              <Typography variant="body2">Email: info@arpitsolar.com</Typography>
+            </Box>
+          </Box>
           <Typography variant="h6" gutterBottom>System Details</Typography>
-          <Typography>System: {selectedProduct!.kWp} kWp (Phase {selectedProduct!.phase})</Typography>
-          <Typography>Module: {selectedProduct!.module}W × {selectedProduct!.qty} Qty</Typography>
+          {selectedProduct ? (
+            <>
+              <Typography>System: {selectedProduct.kWp} kWp (Phase {selectedProduct.phase})</Typography>
+              <Typography>Module: {selectedProduct.module}W × {selectedProduct.qty} Qty</Typography>
+            </>
+          ) : (
+            <Typography color="text.secondary">Please select a product to show system details.</Typography>
+          )}
           <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" gutterBottom>Included Components</Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+            <Table size="small">
+              <TableBody>
+                {components.map((c) => (
+                  <TableRow key={`sales-${c.name}-${c.quantity}`}>
+                    <TableCell>{c.name}</TableCell>
+                    <TableCell>{[c.brand, c.spec].filter(Boolean).join(' ')}</TableCell>
+                    <TableCell align="right">{c.quantity}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
           <Typography variant="h6" gutterBottom>Price Breakdown</Typography>
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
@@ -449,7 +514,7 @@ export default function SolarPricingPage() {
                 <TableRow><TableCell sx={{ pl: 4, color: "text.secondary" }}>Salesperson Margin (40%)</TableCell><TableCell align="right" sx={{ color: "text.secondary" }}>{formatCurrency(marginPrice * 0.4)}</TableCell></TableRow>
                 {wirePrice > 0 && (<TableRow><TableCell>Extra Wire Cost</TableCell><TableCell align="right">{formatCurrency(wirePrice)}</TableCell></TableRow>)}
                 {heightPrice > 0 && (<TableRow><TableCell>Extra Height Cost (H × Rate × kW)</TableCell><TableCell align="right">{formatCurrency(heightPrice)}</TableCell></TableRow>)}
-                {outOfVnsPrice > 0 && (<TableRow><TableCell>Out of Varanasi Charge</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
+                {outOfVnsPrice > 0 && (<TableRow><TableCell>Logistics & Delivery Fee</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
                 <TableRow><TableCell sx={{ fontWeight: 600 }}>Subtotal (Before GST)</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell></TableRow>
                 <TableRow><TableCell>GST (8.9%)</TableCell><TableCell align="right">{formatCurrency(gstAmount)}</TableCell></TableRow>
                 <TableRow><TableCell>Total (After GST)</TableCell><TableCell align="right">{formatCurrency(total)}</TableCell></TableRow>
@@ -464,11 +529,21 @@ export default function SolarPricingPage() {
 
         {/* Customer Copy */}
         <div ref={customerPrintRef} style={{ padding: 24, color: "black", width: "800px" }}>
-          <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} />
-            <Box textAlign="right">
-              <Typography variant="h6">Arpit Solar - Quotation</Typography>
+          <Box sx={{ mb: 2, display: "flex", justifyContent: "flex-start", alignItems: "center" }}>
+            <Image src={companyDetails.logo} alt="Arpit Solar Logo" width={140} height={50} style={{ height: 'auto' }} />
+          </Box>
+          <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Box>
+              <Typography variant="h6">Arpit Solar Shop - Quotation</Typography>
               <Typography variant="body2">Date: {todayString}</Typography>
+            </Box>
+            <Box textAlign="right">
+              <Typography variant="subtitle2" fontWeight={700}>Arpit Solar Shop</Typography>
+              <Typography variant="body2">SH16/114-25-K-2, Sharvodayanagar,</Typography>
+              <Typography variant="body2">Varanasi – 221003, Uttar Pradesh</Typography>
+              <Typography variant="body2">GSTIN: 09APKPM6299L1ZW</Typography>
+              <Typography variant="body2">Contact: 9044555572</Typography>
+              <Typography variant="body2">Email: info@arpitsolar.com</Typography>
             </Box>
           </Box>
           <Divider sx={{ my: 1 }} />
@@ -478,9 +553,29 @@ export default function SolarPricingPage() {
           <Typography><strong>Address:</strong> {customerInfo.address || "N/A"}</Typography>
           <Divider sx={{ my: 2 }} />
           <Typography variant="h6" gutterBottom>System Details</Typography>
-          <Typography>System: {selectedProduct!.kWp} kWp (Phase {selectedProduct!.phase})</Typography>
-          <Typography>Module: {selectedProduct!.module}W × {selectedProduct!.qty} Qty</Typography>
+          {selectedProduct ? (
+            <>
+              <Typography>System: {selectedProduct.kWp} kWp (Phase {selectedProduct.phase})</Typography>
+              <Typography>Module: {selectedProduct.module}W × {selectedProduct.qty} Qty</Typography>
+            </>
+          ) : (
+            <Typography color="text.secondary">Please select a product to show system details.</Typography>
+          )}
           <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" gutterBottom>Included Components</Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+            <Table size="small">
+              <TableBody>
+                {components.map((c) => (
+                  <TableRow key={`cust-${c.name}-${c.quantity}`}>
+                    <TableCell>{c.name}</TableCell>
+                    <TableCell>{[c.brand, c.spec].filter(Boolean).join(' ')}</TableCell>
+                    <TableCell align="right">{c.quantity}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
           <Typography variant="h6" gutterBottom>Price Summary</Typography>
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
@@ -489,7 +584,7 @@ export default function SolarPricingPage() {
                 {marginPrice > 0 && (<TableRow><TableCell>Extra Margin</TableCell><TableCell align="right">{formatCurrency(marginPrice)}</TableCell></TableRow>)}
                 {wirePrice > 0 && (<TableRow><TableCell>Extra Wire Cost</TableCell><TableCell align="right">{formatCurrency(wirePrice)}</TableCell></TableRow>)}
                 {heightPrice > 0 && (<TableRow><TableCell>Extra Height Cost</TableCell><TableCell align="right">{formatCurrency(heightPrice)}</TableCell></TableRow>)}
-                {outOfVnsPrice > 0 && (<TableRow><TableCell>Out of Varanasi Charge</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
+                {outOfVnsPrice > 0 && (<TableRow><TableCell>Logistics & Delivery Fee</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}
                 <TableRow><TableCell sx={{ fontWeight: 600 }}>Subtotal (Before GST)</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(subtotal)}</TableCell></TableRow>
                 <TableRow><TableCell>GST (8.9%)</TableCell><TableCell align="right">{formatCurrency(gstAmount)}</TableCell></TableRow>
                 <TableRow><TableCell>Total (After GST)</TableCell><TableCell align="right">{formatCurrency(total)}</TableCell></TableRow>

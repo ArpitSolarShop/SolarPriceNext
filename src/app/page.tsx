@@ -580,8 +580,7 @@ export default function SolarPricingPage() {
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
               <TableBody>
-                <TableRow><TableCell>Base Price</TableCell><TableCell align="right">{formatCurrency(basePrice)}</TableCell></TableRow>
-                {marginPrice > 0 && (<TableRow><TableCell>Extra Margin</TableCell><TableCell align="right">{formatCurrency(marginPrice)}</TableCell></TableRow>)}
+                <TableRow><TableCell>Base Price</TableCell><TableCell align="right">{formatCurrency(basePrice + marginPrice)}</TableCell></TableRow>
                 {wirePrice > 0 && (<TableRow><TableCell>Extra Wire Cost</TableCell><TableCell align="right">{formatCurrency(wirePrice)}</TableCell></TableRow>)}
                 {heightPrice > 0 && (<TableRow><TableCell>Extra Height Cost</TableCell><TableCell align="right">{formatCurrency(heightPrice)}</TableCell></TableRow>)}
                 {outOfVnsPrice > 0 && (<TableRow><TableCell>Logistics & Delivery Fee</TableCell><TableCell align="right">{formatCurrency(outOfVnsPrice)}</TableCell></TableRow>)}

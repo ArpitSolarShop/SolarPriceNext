@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       ...quoteData,
       components: defaultComponents,
       logoUrl,
-      calculations: { basePrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount, grandTotal }
+      calculations: { basePrice, marginPrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount, grandTotal }
     });
 
     // Launch Chromium appropriately for the environment

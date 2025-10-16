@@ -23,12 +23,13 @@
 export const generateQuoteHtml = (data: any): string => {
     const { customerInfo, selectedProduct, calculations, components = [], logoUrl } = data;
     // ✅ Ensure calculations shape is safe and compute discount/grand total on the server
-    const { basePrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount } = calculations || ({} as any);
+    const { basePrice, marginPrice, wirePrice, heightPrice, outOfVnsPrice, subtotal, gstAmount, total, discount } = calculations || ({} as any);
 
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val);
     const t = typeof total === 'number' ? total : 0;
     const safeDiscount = typeof discount === 'number' && discount > 0 ? +discount : 0;
     const grandTotal = +(t - safeDiscount).toFixed(2);
+    const includeMarginInBase = data?.channel === 'whatsapp';
 
     return `<!DOCTYPE html>
     <html>
@@ -92,7 +93,7 @@ export const generateQuoteHtml = (data: any): string => {
             </table>
             <table>
                 <tr><th>Pricing</th><th style="text-align:right;">Amount</th></tr>
-                <tr><td>Base System Price</td><td style="text-align:right;">${formatCurrency(basePrice)}</td></tr>
+                <tr><td>Base System Price</td><td style="text-align:right;">${formatCurrency(basePrice + (includeMarginInBase ? (typeof marginPrice === 'number' ? marginPrice : 0) : 0))}</td></tr>
                 ${wirePrice > 0 ? `<tr><td>Extra Wire Cost</td><td style="text-align:right;">${formatCurrency(wirePrice)}</td></tr>` : ''}
                 ${heightPrice > 0 ? `<tr><td>Extra Height Cost</td><td style="text-align:right;">${formatCurrency(heightPrice)}</td></tr>` : ''}
                 ${outOfVnsPrice > 0 ? `<tr><td>Logistics & Delivery Fee</td><td style="text-align:right;">${formatCurrency(outOfVnsPrice)}</td></tr>` : ''}
